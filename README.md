@@ -1,2 +1,2 @@
-# CAP-respiratory-microbiota
-Dynamics of respiratory tract microbiota and its association with severity in patients with community-acquired pneumonia
+# Human oropharyngeal microbiome
+The human oropharyngeal microbiome is influenced by cohabitation
