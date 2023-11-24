@@ -1,0 +1,316 @@
+---
+title: "ARG-carrying contigs analysis"
+author: "Jing Yang"
+date: "2023-10-21"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+mge_meta=read.csv("MGE/MGE_metadata.csv")
+arg_meta=read.csv("ARG_megares/megares_full_annotations_v2.00.csv")
+names(mge_meta)[2]="mge_type"
+names(arg_meta)[1]="arg"
+arg_meta$arg=tolower(arg_meta$arg)
+
+####ARG sequences hit on contigs
+arg_acc=read.table("F:/AAAA/Others/WH_healthy_OP/data/ARG_MGE/acc_arg_contig_blastn.out",sep = "\t",header = F)
+#### MGE sequence hit on contigs
+mge_acc=read.table("F:/AAAA/Others/WH_healthy_OP/data/ARG_MGE/acc_mge_blastn.out",sep = "\t",header = F)
+names(arg_acc)=c("query","acc","pident","length","mismatch","gapopen","qstart","qend","sstart_arg","send_arg","evalue","bitscore")
+names(mge_acc)=c("query","acc","pident","length","mismatch","gapopen","qstart","qend","sstart_mge","send_mge","evalue","bitscore")
+
+arg_len=read.table("F:/AAAA/Others/WH_healthy_OP/data/ARG_MGE/arg.len",sep = "\t",header = F) %>% .[,c(1,4)]
+mge_len=read.table("F:/AAAA/Others/WH_healthy_OP/data/ARG_MGE/mge.len",sep = "\t",header = F) %>% .[,c(1,4)]
+names(arg_len)=names(mge_len)=c("query","query_length")
+
+arg_acc=left_join(arg_acc,arg_len)
+mge_acc=left_join(mge_acc,mge_len)
+
+arg_acc$coverage=(arg_acc$qend-arg_acc$qstart)/arg_acc$query_length
+hist(arg_acc$coverage)
+mge_acc$coverage=(mge_acc$qend-mge_acc$qstart)/mge_acc$query_length
+hist(mge_acc$coverage)
+
+#identity above 70% and coverage above 80%
+arg_acc1=arg_acc[arg_acc$pident>80 & arg_acc$coverage >0.7,]
+mge_acc1=mge_acc[mge_acc$pident>80 & mge_acc$coverage >0.7,]
+
+###Contigs both containing ARG and MGE
+acc_arg_mge=data.frame(acc=intersect(unique(arg_acc1$acc),unique(mge_acc1$acc)),
+                       sampleID=lapply(intersect(unique(arg_acc1$acc),unique(mge_acc1$acc)),
+                                       function(x){strsplit(x,split = "_") %>% unlist %>% .[3]}) %>% unlist)
+names(arg_acc1)[1]="arg"
+names(mge_acc1)[1]="mge"
+
+###ACC的长度
+acc_len=read.table("F:/AAAA/Others/WH_healthy_OP/data/ARG_MGE/acc.len",sep = "\t",header = F) %>% .[,c(1,4)]
+names(acc_len)=c("acc","acc_len")
+arg_acc1=left_join(arg_acc1,acc_len) #####300bp以上
+names(arg_acc1)[1]="arg"
+arg_acc1$arg=tolower(arg_acc1$arg)
+arg_acc1=left_join(arg_acc1,arg_meta)
+names(arg_acc1)[16:19]=c("arg_type","arg_class","arg_mechanism","arg_gene")
+
+arg_acc2=arg_acc1[!duplicated(arg_acc1[,c("acc","arg_gene")]),]
+
+total_acc_taxa=read.table("F:/AAAA/Others/WH_healthy_OP/data/ARG_MGE/acc_taxa",sep = "\t")
+names(total_acc_taxa)=c("acc","taxa")
+total_acc_taxa$taxa=gsub(" \\(.*","",total_acc_taxa$taxa)
+
+arg_acc2=left_join(arg_acc2,total_acc_taxa) 
+arg_acc2$sampleID=lapply(arg_acc2$acc,function(x){strsplit(x,split = "_") %>% unlist %>% .[3]}) %>% unlist
+length(unique(arg_acc_species$sampleID))
+
+```
+
+## Sankey plot
+
+```{r pressure, echo=FALSE}
+##load kraken report to extract genus and species
+acc_kraken=read.table("F:/AAAA/Others/WH_healthy_OP/data/ARG_MGE/acc.kraken_report.txt",sep = "\t")
+acc_kraken$V6=gsub("^ *","",acc_kraken$V6) %>% gsub(" *$","",.)
+
+acc_genus=acc_kraken$V6[acc_kraken$V4=="G"]
+acc_species=acc_kraken$V6[acc_kraken$V4=="S"]
+
+arg_acc2$taxa=gsub(" \\(.*","",arg_acc2$taxa)
+arg_acc_species=arg_acc2[arg_acc2$taxa %in% acc_species,]
+arg_acc_species$genus=apply(arg_acc_species,1,function(x){strsplit(x[20],split = " ") %>% unlist %>% .[1]})
+arg_acc_species$genus=gsub("\\[","",arg_acc_species$genus) %>% gsub("\\]","",.)
+#arg_acc_species_genus=aggregate(Freq~genus+class,arg_acc_species,sum)
+arg_acc_species=arg_acc_species[arg_acc_species$genus != "Delftia" & arg_acc_species$arg_type=="Drugs" & arg_acc_species$genus!="uncultured",]
+arg_acc_species$sampleID=lapply(arg_acc_species$acc,function(x){strsplit(x,split = "_") %>% unlist %>% .[3]}) %>% unlist
+arg_acc_species=arg_acc_species[arg_acc_species$taxa!="Homo sapiens",]
+length(unique(arg_acc_species$sampleID))
+length(unique(arg_acc_species$acc))
+####872个样本中6123个ACCs 还是很可观[792个样本中2847个ACCs]
+library(networkD3)
+taxa_class_species=table(dplyr::select(arg_acc_species,taxa,genus,arg_class)) %>% as.data.frame()
+taxa_class_species=taxa_class_species[taxa_class_species$Freq>0,]
+tmp=taxa_class_species[taxa_class_species$Freq>29,c("genus","taxa","arg_class","Freq")]
+names(tmp)=c("genus","source","target","value")
+left=tmp[,c(1,2,4)]
+left=aggregate(value~genus+source,left,sum)
+colnames(left) = c("Source", "Target", "Value")
+right=tmp[,c("source","target","value")]
+colnames(right) = c("Source", "Target", "Value")
+nodes <- c(as.character(left$Source), as.character(left$Target), as.character(right$Target))
+nodes <- data.frame(unique(as.factor(nodes)))
+colnames(nodes) = c("Source")
+nodes$ID <- seq.int(from = 0, to = nrow(nodes) - 1)
+nodes <- nodes[,c("ID","Source")]
+# Now map Node lookup table numbers to source and target
+# Merge index onto Source
+l_edges <- merge(left, nodes, by.x = "Source")
+l_edges$source = l_edges$ID
+r_edges <- merge(right, nodes, by.x = "Source")
+r_edges$source = r_edges$ID
+# Merge index onto Target
+names(nodes) = c("ID", "Target")
+l_edges2 <- l_edges[,c("Source","Target","Value","source")]
+r_edges2 <- r_edges[,c("Source","Target","Value","source")]
+l_edges <- merge(l_edges2, nodes, by.x = "Target")
+r_edges <- merge(r_edges2, nodes, by.x = "Target")
+# rename everything so its nice and neat
+names(l_edges) <- c("osrc", "otgt", "value", "source", "target")
+names(r_edges) <- c("osrc", "otgt", "value", "source", "target")
+names(nodes) = c("ID", "name")
+
+# Combine into one big final data frame
+edges <- rbind(l_edges, r_edges)
+#edges$value=log10(edges$value)
+p=sankeyNetwork(Links = edges, Nodes = nodes,
+                Source = "source", Target = "target",
+                Value = "value", NodeID = "name",
+                fontSize = 15,nodeWidth = 30,
+                fontFamily = "Arial",
+                height = 900, width = 600,
+                sinksRight = T)
+
+p
+```
+## Mobility of ACCs
+
+```{r}
+acc_arg_mge1=merge(select(arg_acc1,arg,acc,sstart_arg,send_arg),select(mge_acc1,mge,acc,sstart_mge,send_mge))
+#distance between ARG and MGE on the ACC less than 5000bp
+acc_arg_mge1$mge_arg=apply(acc_arg_mge1,1,function(x){min(x[3] %>% as.numeric(),x[4] %>% as.numeric())-max(x[6] %>% as.numeric(),x[7] %>% as.numeric())})
+acc_arg_mge1$arg_mge=apply(acc_arg_mge1,1,function(x){min(x[6] %>% as.numeric(),x[7] %>% as.numeric())-max(x[3] %>% as.numeric(),x[4] %>% as.numeric())})
+
+acc_arg_mge1$mge_arg=ifelse(acc_arg_mge1$mge_arg<=0,0,acc_arg_mge1$mge_arg)
+acc_arg_mge1$arg_mge=ifelse(acc_arg_mge1$arg_mge<=0,0,acc_arg_mge1$arg_mge)
+acc_arg_mge1$dist=acc_arg_mge1$mge_arg+acc_arg_mge1$arg_mge
+acc_arg_mge1=left_join(acc_arg_mge1,mge_meta)
+acc_arg_mge1=left_join(acc_arg_mge1,arg_meta)
+acc_arg_mge2=acc_arg_mge1[acc_arg_mge1$dist<5000,]
+acc_arg_mge2$sampleID=lapply(acc_arg_mge2$acc,
+                             function(x){strsplit(x,split = "_") %>% unlist %>% .[3]}) %>% unlist
+names(acc_arg_mge2)[names(acc_arg_mge2)=="note"]="mge_note"
+names(acc_arg_mge2)[names(acc_arg_mge2)=="group"]="arg_gene"
+acc_arg_mge3=acc_arg_mge2[!duplicated(acc_arg_mge2[,c("acc","arg_gene","mge_note")]),]
+acc_arg_mge3=left_join(acc_arg_mge3,total_acc_taxa) ###species classification
+acc_arg_mge3=left_join(acc_arg_mge3,acc_len)
+#######先不管ARG+MGE的物种分配
+acc_arg_mge3$taxa=gsub(" \\(.*","",acc_arg_mge3$taxa)
+length(unique(acc_arg_mge3$acc[acc_arg_mge3$taxa %in% acc_species]))
+
+###ACCs from plasmid predicted by Plasflow
+acc_plasmid=read.table("F:/AAAA/Others/WH_healthy_OP/data/ARG_MGE/acc.plasflow_predictions.tsv",header = T,sep = "\t") %>% .[,1:4]
+acc_plasmid$label1=NA
+acc_plasmid$label1[grep("plasmid",acc_plasmid$label)]="plasmid"
+acc_plasmid$label1[grep("chromosome",acc_plasmid$label)]="chromosome"
+acc_plasmid$label1[is.na(acc_plasmid$label1)]="unclassified"
+table(acc_plasmid$label1)
+names(acc_plasmid)[1]="acc"
+
+acc_arg_mge3=left_join(acc_arg_mge3,select(acc_plasmid,acc,label1))
+arg_acc2=left_join(arg_acc2,acc_plasmid[,c("acc","label1")])
+tmp=acc_arg_mge3[duplicated(select(acc_arg_mge3,acc,arg_gene,mge_type)),]
+tmp=acc_arg_mge3[acc_arg_mge3$acc %in% tmp$acc,]
+
+
+##### host numbers of ARGs and their mobility ##########
+species_gene=arg_acc_species[, c("taxa","arg_gene")]
+species_gene=species_gene[!duplicated(species_gene),]
+#species_gene=species_gene[species_gene$Freq>0,] 
+species_gene=as.data.frame(table(species_gene$arg_gene))#[,c("ID","sampleID")]
+#species_gene=species_gene[species_gene$Freq>0,] 
+names(species_gene)=c("arg_gene","host_numbers")
+names(arg_meta)[5]="arg_gene"
+names(arg_meta)[3]="arg_class"
+species_gene=left_join(species_gene,arg_meta[!duplicated(select(arg_meta,arg_gene,arg_class)),
+                                             c("arg_gene","arg_class")])
+
+species_gene$prevalence=lapply(species_gene$arg_gene %>% as.character,
+                               function(x){
+                                 all_sample=arg_acc_species$sampleID[arg_acc_species$arg_gene==x]
+                                 return(length(unique(all_sample))/length(unique(arg_acc_species$sampleID)))
+                               }) %>% unlist
+
+
+
+
+
+tmp=as.data.frame(arg_acc_species$arg_gene %>% table)
+names(tmp)=c("arg_gene","total_acc_numbers")
+species_gene=left_join(species_gene,tmp)
+
+species_gene$mobile_acc_numbers=lapply(species_gene$arg_gene %>% as.character,
+                                       function(x){
+                                         gene_total_acc=arg_acc_species$acc[arg_acc_species$arg_gene==x] %>% unique()
+                                         tt=intersect(gene_total_acc,c(arg_acc2$acc[arg_acc2$label1=="plasmid"],acc_arg_mge3$acc) %>% unique)
+                                         return(length(tt))
+                                         }) %>% unlist
+species_gene$acc_mobility=species_gene$mobile_acc_numbers/species_gene$total_acc_numbers
+
+ggscatterstats(
+  data  = species_gene[species_gene$total_acc_numbers>99,],
+  type = "nonparametric",
+  x     = acc_mobility,
+  y     = host_numbers,
+  point.args = list(aes(color = arg_class,size=prevalence)),
+  label.var = arg_gene,
+  point.label.args = list(size = 3, max.overlaps = 1e+06),
+  smooth.line.args = list(linewidth = 1, color = "blue", method = "lm", formula = y ~x,se=T),
+  fill = class,
+  xlab  = "Percentage of mobile ACCs",
+  ylab  = "Host numbers",
+  marginal = F)+
+  theme_test()+
+  scale_color_manual(values = c(pal_nejm("default",alpha = 1)(7),"#8F770B"))#+facet_wrap(.~arg_class,nrow = 3,scales = "free")
+
+ ggscatterstats(
+  data  = species_gene,
+  type = "nonparametric",
+  x     = prevalence,
+  y     = host_numbers,
+  point.args = list(size=2),#,aes(color = arg_class)
+  fill = class,
+  xlab  = "Prevelance",
+  ylab  = "Host numbers",
+  marginal = F
+)+theme_test()#+scale_color_simpsons()
+
+
+######
+arg_type_mobile=aggregate(cbind(total_acc_numbers,mobile_acc_numbers)~arg_class,data = species_gene,sum)
+arg_type_mobile$mobilty=arg_type_mobile$mobile_acc_numbers/arg_type_mobile$total_acc_numbers
+arg_type_mobile=arg_type_mobile[order(arg_type_mobile$mobilty,decreasing = F),]
+tmp=arg_type_mobile[arg_type_mobile$total_acc_numbers>300,]
+tmp$arg_class=factor(tmp$arg_class,levels = tmp$arg_class)
+
+ggplot(tmp,aes(x=arg_class,y=mobilty))+
+  geom_bar(stat = "identity",width = 0.5)+coord_flip()+theme_test()+xlab("")+
+  ylab("Percentage of mobile ACCs")
+
+
+###specific ARG+MGE combination
+acc_arg_mge4=select(acc_arg_mge3,acc,arg_gene,mge_type,sampleID,taxa,label1,acc_len)
+acc_arg_mge4=acc_arg_mge4[!duplicated(acc_arg_mge4),]
+load("F:/AAAA/Others/WH_healthy_OP/Summary/data_scripts/metadata.RData")
+acc_arg_mge4=left_join(acc_arg_mge4,select(meta_11,sampleID,family,age))
+
+acc_arg_mge4$combination=apply(acc_arg_mge4,1,function(x){paste(x[2],x[3],sep = "+")})
+acc_arg_mge4=acc_arg_mge4[!duplicated(select(acc_arg_mge4,acc,sampleID,taxa,combination)),]
+
+tmp=table(acc_arg_mge4[,c("combination","taxa")]) %>% as.data.frame()
+tmp=tmp[tmp$Freq!=0,]
+names(tmp)[3]="numbers of contigs"
+tmp=tmp[tmp$taxa %in% acc_species,]
+tmp1=table(tmp$combination) %>% as.data.frame() %>% .[.$Freq!=0,]
+names(tmp1)=c("combination","numbers of species")
+
+gene_plot=data.frame(gene=c("Tn916","mefA","msrD"),
+                     start=c(9015,10697,12034),
+                     end=c(9368,11914,13497))
+
+gene_plot$contig="k141_10268_WHTS-7742"
+gene_plot$strand="forword"
+gene_plot$direction=1
+
+ggplot(gene_plot, aes(xmin = start, xmax = end,y = contig,
+                      fill = gene,label = gene, forward = direction,alpha=0.5)) +
+  geom_gene_arrow() +
+  scale_fill_brewer(palette = "Set3") +
+  theme_genes()+
+  geom_gene_label(align = "left")
+
+gene_plot1=data.frame(gene=c("tnpA","aac6","aph2"),
+                      start=c(326,552,555),
+                      end=c(548,1991,1334))
+
+gene_plot1$contig="k141_32453_WHTS-10703"
+gene_plot1$strand="forword"
+gene_plot1$direction=1
+
+ggplot(gene_plot1, aes(xmin = start, xmax = end,y = contig,
+                      fill = gene,label = gene, forward = direction,alpha=0.5)) +
+  geom_gene_arrow() +
+  scale_fill_brewer(palette = "Set3") +
+  theme_genes()+
+  geom_gene_label(align = "left")
+
+#######host heatmap
+k1=tmp[tmp$combination=="AAC6-PRIME+transposase",c("taxa","numbers of contigs")]
+k1=k1[!(k1$taxa %in% c("Aeromonas salmonicida","uncultured bacterium")),]
+names(k1)[2]="AAC6-PRIME"
+k2=tmp[tmp$combination=="MEFA+Tn916",c("taxa","numbers of contigs")]
+names(k2)[2]="MEFA+Tn916"
+kk=full_join(k2,k1)
+kk$genus=lapply(kk$taxa %>% as.character,function(x){strsplit(x,split = " ") %>% unlist %>% .[1]}) %>% unlist
+kk$taxa=apply(kk,1,function(x){gsub(x[4],paste(substr(x,1,1),". ",sep = ""),x[1])})
+tt=kk$taxa
+kk=select(kk,-taxa,-genus)
+rownames(kk)=tt
+
+colors = structure(c("#ECEFF1","#CFD8DC","#B0BEC5","#607D8B","#455A64","#263238"), 
+                   names = c("1", "2", "3", "4","5","20")) # black, red, green, blue
+Heatmap(t(kk),name="No. of contigs",col=colors,
+        cluster_rows = F,cluster_columns = F,
+        na_col = "white",
+        border = TRUE,column_names_rot = 30)
+
+hist(acc_arg_mge4$age[acc_arg_mge4$taxa=="Streptococcus pneumoniae" &
+                           acc_arg_mge4$combination=="AAC6-PRIME+transposase"])
+```
+
