@@ -42,7 +42,7 @@ acc_arg_mge=data.frame(acc=intersect(unique(arg_acc1$acc),unique(mge_acc1$acc)),
 names(arg_acc1)[1]="arg"
 names(mge_acc1)[1]="mge"
 
-###ACC的长度
+###length of arg-carrying contigs
 acc_len=read.table("F:/AAAA/Others/WH_healthy_OP/data/ARG_MGE/acc.len",sep = "\t",header = F) %>% .[,c(1,4)]
 names(acc_len)=c("acc","acc_len")
 arg_acc1=left_join(arg_acc1,acc_len) #####300bp以上
@@ -83,7 +83,7 @@ arg_acc_species$sampleID=lapply(arg_acc_species$acc,function(x){strsplit(x,split
 arg_acc_species=arg_acc_species[arg_acc_species$taxa!="Homo sapiens",]
 length(unique(arg_acc_species$sampleID))
 length(unique(arg_acc_species$acc))
-####872个样本中6123个ACCs 还是很可观[792个样本中2847个ACCs]
+
 library(networkD3)
 taxa_class_species=table(dplyr::select(arg_acc_species,taxa,genus,arg_class)) %>% as.data.frame()
 taxa_class_species=taxa_class_species[taxa_class_species$Freq>0,]
@@ -150,7 +150,7 @@ names(acc_arg_mge2)[names(acc_arg_mge2)=="group"]="arg_gene"
 acc_arg_mge3=acc_arg_mge2[!duplicated(acc_arg_mge2[,c("acc","arg_gene","mge_note")]),]
 acc_arg_mge3=left_join(acc_arg_mge3,total_acc_taxa) ###species classification
 acc_arg_mge3=left_join(acc_arg_mge3,acc_len)
-#######先不管ARG+MGE的物种分配
+###
 acc_arg_mge3$taxa=gsub(" \\(.*","",acc_arg_mge3$taxa)
 length(unique(acc_arg_mge3$acc[acc_arg_mge3$taxa %in% acc_species]))
 
