@@ -1,0 +1,367 @@
+---
+title: "Figure2: impact of cohabitation on OP microbiome"
+author: "Jing Yang"
+date: "2024-07-18"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Loading packages and external functions
+
+```{r}
+library(vegan)
+library(dplyr)
+library(ggplot2)
+library(ggsci)
+library(ggpubr)
+library(data.table)
+library(ggdist)
+library(ggsignif)
+
+flattenCorrMatrix <- function(mat) {
+  ut <- upper.tri(mat)
+  data.table(
+    s1 = rownames(mat)[row(mat)[ut]],
+    s2 = rownames(mat)[col(mat)[ut]],
+    value  = (mat)[ut]
+  )
+}
+```
+
+## Figure 2A
+
+Comparing microbiome compostion between cohabiting populations and unrelated populations
+
+```{r}
+distance=vegan::vegdist(t(species_clr),method = "euclidean") %>% as.matrix()#euclidean/horn
+distance=flattenCorrMatrix(distance) %>% as.data.frame()
+
+distance$pairs=apply(distance,1,function(x){paste(min(x[1],x[2]),max(x[1],x[2]),sep = "_")})
+distance$type=apply(distance,1,function(x){f1=meta_1$family[meta_1$sampleID==x[1]];f2=meta_1$family[meta_1$sampleID==x[2]];if(f1==f2){return("cohabitation")}else{return("non-cohabitation")}})
+
+distance_intra=distance[distance$type=="cohabitation",]
+distance_intra$family=meta_1[distance_intra$s1,"family"]
+
+intra_samples=unique(c(distance_intra$s1,distance_intra$s2))
+
+distance_inter_bg=distance[((distance$s1 %in% c(intra_samples))&(distance$s2 %in% c(intra_samples))) & distance$type=="non-cohabitation",]
+length(unique(c(distance_inter_bg$s1,distance_inter_bg$s2)))
+
+dist_taxa=rbind(distance_intra[,1:5],distance_inter_bg)
+###repeat for pathways/arg/vf
+dist_taxa$group="Species"
+dist_pwy$group="Pathway"
+dist_arg$group="ARG"
+dist_vf$group="VF"
+dist1=Reduce(rbind,list(dist_taxa,dist_pwy,dist_arg,dist_vf))
+
+dist1$group=factor(dist1$group,levels = c("Species","Pathway","ARG","VF"))
+dist1$type=factor(dist1$type,levels = c("non-cohabitation","cohabitation"),
+                      labels = c("non-cohabitation","cohabitation"))
+
+p=ggplot(dist1, aes(x = type, y = log2(value),fill=type)) +
+  geom_boxplot(position = position_nudge(x = 0),width=0.3,
+               outlier.size = 0.1,outlier.alpha =0.8,alpha=0.6,outlier.shape = NA)+
+  scale_fill_manual(values = c("#0C564E","#985E12"))+   
+  scale_color_manual(values = c("#0C564E","#985E12"))+ #ylim(0,1.05)+ 
+  xlab("") + ylab("Distance") +
+  stat_compare_means(comparisons = list(c("cohabitation","non-cohabitation"))#,
+              #step_increase = .1,map_signif_level = TRUE,vjust = 0.4,hjust= 0.4
+              )+
+  theme_test()+
+  theme(legend.position = "none")+facet_wrap(~group,nrow = 2,scales = "free",strip.position = "top")
+p
+```
+
+Alternative plots
+
+```{r}
+ggplot(dist1,aes(x=value))+ 
+  geom_histogram(aes(y = stat(width*density),fill=type),
+                 alpha=0.5,color="grey30",position = "identity")+
+  scale_y_continuous(labels = scales::percent)+
+  scale_fill_manual(values = c("#0C564E","#985E12"))+
+  labs(x="Distance",y="Percentage")+theme_test()+
+  theme(legend.position = "top")+ggtitle("")+facet_wrap(~group,nrow = 2)
+
+ggplot(dist1)+
+  stat_ecdf(aes(x=value,color=type),geom = "step",size=1)+
+  #geom_density(aes(x=value,color=type),alpha=0.6)+
+  scale_color_manual(values = c("#0C564E","#985E12"))+
+  labs(x="Distance",y="Cumulative fraction")+
+  theme_test()+facet_wrap(~group,nrow = 2)+
+  theme(
+    axis.title=element_text(size = 10),
+    axis.text.x= element_text(size = 10,angle = 0),
+    axis.text.y= element_text(size = 10),
+    legend.position ="bottom",name="",
+    strip.text = element_text(size = 10))
+
+library(ggridges)
+ggplot(dist1, aes(x = value, y = type, fill = type)) +
+  geom_density_ridges2(aes(x = value, y = type, fill = type),alpha=0.5) +
+  scale_fill_manual(values = c("#0C564E","#985E12"))+
+  theme_ridges() + 
+  facet_wrap(~group,nrow = 2)+
+  theme(
+    axis.title=element_text(size = 10),
+    axis.text.x= element_text(size = 10,angle = 0),
+    axis.text.y= element_text(size = 10),
+    legend.position ="none",
+    strip.text = element_text(size = 10))
+
+ggplot(dist1, aes(y = group)) +
+  geom_density_ridges(aes(x = value, fill = paste(group,type)),alpha=0.5) +
+  scale_fill_manual(values = rep(c("#0C564E","#985E12"),4))+
+  theme_ridges() + 
+  #facet_wrap(~group,nrow = 2)+
+  theme(
+    axis.title=element_text(size = 10),
+    axis.text.x= element_text(size = 10,angle = 0),
+    axis.text.y= element_text(size = 10),
+    legend.position ="none",
+    strip.text = element_text(size = 10))
+```
+
+## Figure 2B
+
+```{r}
+dist1$relations=factor(dist1$relations,
+                       levels = c("non-cohabitation","offspring2","offspring1","spouse","siblings"),
+                       labels = c("non-cohabitation","grantparent-child","parent-child","spouse","sibling"))
+ggplot(dist1[is.na(dist1$relations)==F,],
+          aes(x=relations,y=value,fill=relations))+
+  geom_boxplot(outlier.size = 0.1,width=0.5)+
+  stat_compare_means(comparisons = list(c("sibling","spouse"),
+                                        c("parent-child","spouse"),
+                                        c("sibling","parent-child"),
+                                        c("grantparent-child","parent-child"),
+                                        c("grantparent-child","spouse"),
+                                        c("grantparent-child","sibling"),
+                                        c("non-cohabitation","grantparent-child"),
+                                        c("non-cohabitation","parent-child"),
+                                        c("non-cohabitation","spouse"),
+                                        c("non-cohabitation","sibling")
+                                        ),
+                     aes(label=..p.signif..),vjust = 0.5)+
+  scale_fill_manual(values = c("#85AAA6","#EFC000FF","#868686FF","#CD534CFF","#8F7700FF"))+
+  theme_test()+xlab("")+ylab("Distance")+
+  theme(legend.position = "right",axis.text.x = element_blank())
+```
+
+## Data preparation for Figure 2C
+
+Calculate correlation of microbial features between cohabitants, and the correlation between unrelated individuals was used as the background random distribution for each feature, to determine whether the correlation between cohabitants was merely a random coincidence.
+
+The Script for visualizing the data is in Figure2C_chord.R
+
+```{r}
+###
+data_ch=data.frame(matrix(NA,2,nrow(distance_intra)))
+names(data_ch)=distance_intra$pairs
+
+data_ch1=data.frame(matrix(NA,2,length(which(distance_intra$relations=="spouse"))))
+names(data_ch1)=distance_intra[distance_intra$relations=="spouse","pairs"]
+
+data_ch2=data.frame(matrix(NA,2,length(which(distance_intra$relations=="siblings"))))
+names(data_ch2)=distance_intra[distance_intra$relations=="siblings","pairs"]
+
+data_ch3=data.frame(matrix(NA,2,length(which(distance_intra$relations=="offspring1"))))
+names(data_ch3)=distance_intra[distance_intra$relations=="offspring1","pairs"]
+
+data_ch4=data.frame(matrix(NA,2,length(which(distance_intra$relations=="offspring2"))))
+names(data_ch4)=distance_intra[distance_intra$relations=="offspring2","pairs"]
+
+species_ch_res=data.frame(species=rownames(species_rela),
+                          cor=NA,cor_sd=NA,p=NA,p_sd=NA,
+                          cor_spouse=NA,cor_spouse_sd=NA,p_spouse=NA,p_spouse_sd=NA,
+                          cor_silbling=NA,cor_silbling_sd=NA,p_silbling=NA,p_silbling_sd=NA,
+                          cor_parentchild=NA,cor_parentchild_sd=NA,p_parentchild=NA,p_parentchild_sd=NA,
+                          cor_grantchild=NA,cor__grantchild_sd=NA,p_grantchild=NA,p_grantchild_sd=NA
+                          )
+for(i in 1:244){
+  ## 244 species, calculate the correlation (per species) between cohabitants with different relation types
+  cor=c()
+  pva=c()
+  data <- distance_intra[,c("s1","s2")]
+  cor1=c()
+  pva1=c()
+  data1 <- distance_intra[distance_intra$relations=="spouse",c("s1","s2")]
+  cor2=c()
+  pva2=c()
+  data2 <- distance_intra[distance_intra$relations=="siblings",c("s1","s2")]
+  cor3=c()
+  pva3=c()
+  data3 <- distance_intra[distance_intra$relations=="offspring1",c("s1","s2")]
+  cor4=c()
+  pva4=c()
+  data4 <- distance_intra[distance_intra$relations=="offspring2",c("s1","s2")]
+  for(k in 1:100){
+    for (j in 1:nrow(data)) {
+      random_cols <- sample(1:ncol(data), size = 2) #1,2或者2,1
+      data[j,]=data[j,random_cols]
+    }
+    data_ch[1,]=species_rela[rownames(species_rela)[i],data$s1]
+    data_ch[2,]=species_rela[rownames(species_rela)[i],data$s2]
+    test=cor.test(data_ch[1,] %>% as.numeric(),data_ch[2,] %>% as.numeric(),method = "spearman")
+    cor[k]=test$estimate
+    pva[k]=test$p.value
+    
+    for (j in 1:nrow(data1)) {
+      random_cols <- sample(1:ncol(data1), size = 2) #1,2或者2,1
+      data1[j,]=data1[j,random_cols]
+    }
+    data_ch1[1,]=species_rela[rownames(species_rela)[i],data1$s1]
+    data_ch1[2,]=species_rela[rownames(species_rela)[i],data1$s2]
+    test=cor.test(data_ch1[1,] %>% as.numeric(),data_ch1[2,] %>% as.numeric(),method = "spearman")
+    cor1[k]=test$estimate
+    pva1[k]=test$p.value
+    
+    for (j in 1:nrow(data2)) {
+      data2[j,]=data2[j,random_cols]
+    }
+    data_ch2[1,]=species_rela[rownames(species_rela)[i],data2$s1]
+    data_ch2[2,]=species_rela[rownames(species_rela)[i],data2$s2]
+    test=cor.test(data_ch2[1,] %>% as.numeric(),data_ch2[2,] %>% as.numeric(),method = "spearman")
+    cor2[k]=test$estimate
+    pva2[k]=test$p.value
+    
+    for (j in 1:nrow(data3)) {
+      random_cols <- sample(1:ncol(data3), size = 2) #1,2 or 2,1
+      data3[j,]=data3[j,random_cols]
+    }
+    data_ch3[1,]=species_rela[rownames(species_rela)[i],data3$s1]
+    data_ch3[2,]=species_rela[rownames(species_rela)[i],data3$s2]
+    test=cor.test(data_ch3[1,] %>% as.numeric(),data_ch3[2,] %>% as.numeric(),method = "spearman")
+    cor3[k]=test$estimate
+    pva3[k]=test$p.value
+    
+    for (j in 1:nrow(data4)) {
+      random_cols <- sample(1:ncol(data4), size = 2) #1,2或者2,1
+      data4[j,]=data4[j,random_cols]
+    }
+    data_ch4[1,]=species_rela[rownames(species_rela)[i],data4$s1]
+    data_ch4[2,]=species_rela[rownames(species_rela)[i],data4$s2]
+    test=cor.test(data_ch4[1,] %>% as.numeric(),data_ch4[2,] %>% as.numeric(),method = "spearman")
+    cor4[k]=test$estimate
+    pva4[k]=test$p.value
+    
+    
+  }
+ 
+  species_ch_res$cor[i]=mean(cor)
+  species_ch_res$cor_sd[i]=sd(cor)
+  species_ch_res$p[i]=mean(pva)
+  species_ch_res$p_sd[i]=sd(pva)
+  
+  species_ch_res$cor_spouse[i]=mean(cor1)
+  species_ch_res$cor_spouse_sd[i]=sd(cor1)
+  species_ch_res$p_spouse[i]=mean(pva1)
+  species_ch_res$p_spouse_sd[i]=sd(pva1)
+  
+  species_ch_res$cor_silbling[i]=mean(cor2)
+  species_ch_res$cor_silbling_sd[i]=sd(cor2)
+  species_ch_res$p_silbling[i]=mean(pva2)
+  species_ch_res$p_silbling_sd[i]=sd(pva2)
+  
+  species_ch_res$cor_parentchild[i]=mean(cor3)
+  species_ch_res$cor_parentchild_sd[i]=sd(cor3)
+  species_ch_res$p_parentchild[i]=mean(pva3)
+  species_ch_res$p_parentchild_sd[i]=sd(pva3)
+  
+  species_ch_res$cor_grantchild[i]=mean(cor4)
+  species_ch_res$cor_grantchild_sd[i]=sd(cor4)
+  species_ch_res$p_grantchild[i]=mean(pva4 )
+  species_ch_res$p_grantchild_sd[i]=sd(pva4)
+  
+}
+
+
+species_ch_res1=species_ch_res[is.na(species_ch_res$cor)==F,]
+species_ch_res1$p.adj=p.adjust(species_ch_res1$p,method = "fdr")
+species_ch_res1=species_ch_res1[species_ch_res1$p.adj<0.05,]
+
+species_ch_res1$pre=apply(species_ch_res1,1,function(x){length(which(as.numeric(species_rela[x[1],])!=0))/1046})
+species_ch_res1=species_ch_res1[species_ch_res1$pre>=0.7,]
+species_ch_res1=species_ch_res1[species_ch_res1$species!="uncultured phage",]
+species_ch_res1$genus=lapply(species_ch_res1$species,function(x){strsplit(x,split = " ") %>% unlist %>% .[1]}) %>% unlist()
+species_ch_res1=species_ch_res1[order(species_ch_res1$cor,decreasing = T),]
+
+ #####permutation: random distribution from unrelated individuals######
+species_ch_res1$cor_p=0
+species_ch_res1$p_p=0
+species_bg_res=list()
+for(j in 1:nrow(species_ch_res1)){
+  species_bg_res[[j]]=data.frame(cor=rep(0,1000),p=rep(0,1000))
+  taxa=species_ch_res1$species[j]
+  for(i in 1:1000){
+    sub=sample(1:nrow(distance_inter_bg),nrow(distance_intra),replace = F)
+    dist_inter_sub=distance_inter_bg[sub,]
+    test=cor.test(species_rela[taxa,dist_inter_sub$s1],
+                  species_rela[taxa,dist_inter_sub$s2])
+    species_bg_res[[j]][i,"cor"]=test$estimate
+    species_bg_res[[j]][i,"p"]=test$p.value
+    
+  }
+  species_bg_res[[j]][,"species"]=taxa
+  species_ch_res1$p_p[j]=length(which(species_bg_res[[j]][,"p"]<=species_ch_res1$p))/1000
+  species_ch_res1$cor_p[j]=length(which(species_bg_res[[j]][,"cor"]>=species_ch_res1$cor))/1000
+}
+species_ch_res1$p_p.adj=p.adjust(species_ch_res1$p_p,method = "fdr")
+species_ch_res1$cor_p.adj=p.adjust(species_ch_res1$cor_p,method = "fdr")
+
+species_ch_res1=species_ch_res1[order(species_ch_res1$cor,decreasing = T),]
+
+```
+
+## Analysis of the connection between OP microbiome and SARS-CoV-2 infection within household
+
+```{r}
+distance=vegan::vegdist(t(species_clr),method = "euclidean") %>% as.matrix()#euclidean/horn
+distance=flattenCorrMatrix(distance) %>% as.data.frame()
+
+distance$pairs=apply(distance,1,function(x){paste(min(x[1],x[2]),max(x[1],x[2]),sep = "_")})
+distance$type=apply(distance,1,function(x){f1=meta_1$family[meta_1$sampleID==x[1]];f2=meta_1$family[meta_1$sampleID==x[2]];if(f1==f2){return("cohabitation")}else{return("non-cohabitation")}})
+distance_intra=distance[distance$type=="cohabitation",]
+distance_intra$family=meta_1[distance_intra$s1,"family"]
+
+intra_samples=unique(c(distance_intra$s1,distance_intra$s2))
+distance_intra$s1_antibody=meta_1[distance_intra$s1,"all_antiboby1"]
+distance_intra$s2_antibody=meta_1[distance_intra$s2,"all_antiboby1"]
+distance_intra=distance_intra[is.na(distance_intra$s1_antibody)==F & is.na(distance_intra$s2_antibody)==F,]
+distance_intra$s1_antibody=ifelse(distance_intra$s1_antibody=="positive","+","-")
+distance_intra$s2_antibody=ifelse(distance_intra$s2_antibody=="positive","+","-")
+distance_intra$antibody_pairs=paste(distance_intra$s1_antibody,distance_intra$s2_antibody,sep = "")
+distance_intra$antibody_pairs[distance_intra$antibody_pairs=="-+"]="+-"
+
+distance=vegdist(t(species_clr[,intra_samples$sampleID]),method = "euclidean")
+pcoa <- cmdscale(distance, k = 2, eig = TRUE)
+pcoa_eig <- (pcoa$eig)[1:2] / sum(pcoa$eig)
+tmp_df <- pcoa$points[,1:2] %>% as.data.frame()
+colnames(tmp_df) <-  c('PCoA1', 'PCoA2')
+all(rownames(tmp_df)==intra_samples$sampleID)#colnames(data_input))
+
+tmp_df$samples=rownames(tmp_df)
+tmp_df$antibody=meta_1[tmp_df$samples,"all_antiboby1"]
+
+tmp_df2=merge(tmp_df,aggregate(cbind(mean.x=PCoA1,mean.y=PCoA2)~antibody,tmp_df,mean),by="antibody")
+
+p=ggplot()+
+  geom_point(data=tmp_df2,aes(PCoA1,PCoA2,color=antibody),size=2,alpha=0.7)+
+  theme(legend.position = "right")+theme_test() + 
+  stat_ellipse(data=tmp_df2,aes(PCoA1,PCoA2,fill = antibody),show.legend = F, geom="polygon",alpha=0.04,level = 0.90,type = "t",position = "identity")+
+  #scale_color_viridis(option="D",direction = -1)+
+  #scale_color_npg()+
+  scale_color_manual(values = c("#79aec1","#ae3f51")) + 
+  scale_fill_manual(values = c("#79aec1","#ae3f51")) +
+  xlab(paste("PCoA1"," (",round  (pcoa_eig[1]*100,1),"%",")",sep = ""))+
+  ylab(paste("PCoA2"," (",round(pcoa_eig[2]*100,1),"%",")",sep = ""))
+p
+```
+
+
+
+
