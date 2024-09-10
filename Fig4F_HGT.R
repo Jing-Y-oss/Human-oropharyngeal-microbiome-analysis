@@ -40,7 +40,7 @@ for(i in 1:nrow(dist1)){
   print(i)
   seq1 <- DNAString(paste(mls_mge_gene_500bp[,dist1$V1[i]],collapse = ""))
   seq2 <- DNAString(paste(mls_mge_gene_500bp[,dist1$V2[i]],collapse = ""))
-  window_size <- 50 ###窗口不能太小
+  window_size <- 50 
   similarity_scores <- numeric()
   for (j in 1:(length(seq1) - window_size + 1)) {
     window_seq1 <- unlist(strsplit(subseq(seq1, start = j, width = window_size) %>% as.character(),""))
@@ -55,7 +55,7 @@ for(i in 1:nrow(dist1)){
   dist1_res1$contig_pair=paste(dist1$V1[i],dist1$V2[i],sep = "+")
   dist1_res1$site=1:(length(seq1) - window_size + 1)
   
-  dist1_res=rbind(dist1_res,dist1_res1)###储存
+  dist1_res=rbind(dist1_res,dist1_res1)
 }
 save(dist1_res,file = "dist1_res.RData")
 ###
@@ -138,7 +138,6 @@ p
 
 ##############################################################
 ##############without MGE#####################################
-##随机选择49个无MGE的contigs，同时去除质粒上携带的
 mls_other_contigs1=mls_other_contigs#[!mls_other_contigs$acc %in% arg_acc2$acc[arg_acc2$label1=="plasmid"],]
 #mls_other_contigs1=mls_other_contigs1[sample(1:nrow(mls_other_contigs1),59),]
 
@@ -183,7 +182,7 @@ for(i in 1:nrow(dist2)){
   print(i)
   seq1 <- DNAString(paste(mls_other_gene_500bp[,dist2$V1[i]],collapse = ""))
   seq2 <- DNAString(paste(mls_other_gene_500bp[,dist2$V2[i]],collapse = ""))
-  window_size <- 50 ###窗口不能太小
+  window_size <- 50 
   similarity_scores <- numeric()
   for (j in 1:(length(seq1) - window_size + 1)) {
     window_seq1 <- unlist(strsplit(subseq(seq1, start = j, width = window_size) %>% as.character(),""))
@@ -264,7 +263,6 @@ p <- ggplot() +
 p
 
 #############################################################
-#############换一个contigs###################################
 #####包括抗性基因的及其下游500bp序列的滑窗基因组距离###
 amin_mge_contigs1=amin_mge_contigs#[!amin_mge_contigs$acc %in% arg_acc2$acc[arg_acc2$label1=="plasmid"],]
 
@@ -311,7 +309,7 @@ for(i in 1:nrow(dist1)){
   print(i)
   seq1 <- DNAString(paste(amin_mge_gene_500bp[,dist1$V1[i]],collapse = ""))
   seq2 <- DNAString(paste(amin_mge_gene_500bp[,dist1$V2[i]],collapse = ""))
-  window_size <- 50 ###窗口不能太小
+  window_size <- 50 
   similarity_scores <- numeric()
   for (j in 1:(length(seq1) - window_size + 1)) {
     window_seq1 <- unlist(strsplit(subseq(seq1, start = j, width = window_size) %>% as.character(),""))
@@ -417,7 +415,6 @@ p
 
 ##############################################################
 ##############without MGE#####################################
-##随机选择49个无MGE的contigs，同时去除质粒上携带的
 amin_other_contigs1=amin_other_contigs#[!amin_other_contigs$acc %in% arg_acc2$acc[arg_acc2$label1=="plasmid"],]
 
 amin_other_gene_500bp=data.frame(data.frame(matrix(NA,ncol = length(amin_other_contigs1$acc),nrow = 1940)))
