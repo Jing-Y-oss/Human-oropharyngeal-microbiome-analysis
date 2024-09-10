@@ -1,2 +1,2 @@
 # Human oropharyngeal microbiome
-The human oropharyngeal microbiome is influenced by cohabitation
+Transmission of the Human Oropharyngeal Microbiome among Cohabitants
