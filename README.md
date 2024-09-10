@@ -1,2 +1,2 @@
 # Human oropharyngeal microbiome
-Transmission of the Human Oropharyngeal Microbiome among Cohabitants
+Scripts for the paper titled 'Transmission of the Human Oropharyngeal Microbiome among Cohabitants'
