@@ -1,0 +1,294 @@
+---
+title: "Description and association analysis"
+author: "Jing Yang"
+date: "2024-09-12"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Data loading
+
+```{r}
+setwd("F:/AAAA/Others/WH_healthy_OP/Summary/overview/")
+pacman::p_load(philentropy,dplyr,ggplot2,vegan,tidyverse,viridis,ggsci,ggpubr,ggstatsplot,reshape2,paletteer,ggrepel)
+options(stringsAsFactors = F)
+
+##########data loading#############
+load("all_data/meta_pathway_gene.RData")
+genus_count=read.csv("all_data/genus_corrected.csv",row.names = 1,check.names=FALSE)
+species_count=read.csv("all_data/taxa_corrected.csv",row.names = 1,check.names=FALSE)
+
+species_rela=apply(species_count,1,function(x){x/sum(x)})
+genus_rela=apply(genus_count,1,function(x){x/sum(x)})
+```
+
+## Figure 1B
+
+```{r}
+pca1 <- prcomp(t(species_rela),center = F,scale. = F)
+df1 <- pca1$x 
+df1 <- as.data.frame(df1)
+otu_cca <- rda(t(species_rela))
+tmp_df=scores(otu_cca, display = "si", scaling = 0) %>% as.data.frame()
+all(rownames(tmp_df)==colnames(species_clr))
+tmp_df$samples=rownames(tmp_df)
+tmp_df$dominate_genus=meta_1[tmp_df$samples,"dominate_genus"]
+tmp_df$dominate_genus=factor(tmp_df$dominate_genus,
+                             levels = c(setdiff(unique(tmp_df$dominate_genus),"Others"),"Others"))
+species_contribution=data.frame(taxa=names(scores(otu_cca, display = "sp", scaling = 0)[,1]),
+                                contribution2pc1=scores(otu_cca, display = "sp", scaling = 0)[,1]^2)
+species_contribution2=data.frame(taxa=names(scores(otu_cca, display = "sp", scaling = 0)[,2]),
+                                contribution2pc2=scores(otu_cca, display = "sp", scaling = 0)[,2]^2)
+species_contribution=merge(species_contribution,species_contribution2)
+rm(species_contribution2)
+rownames(species_contribution)=species_contribution$taxa
+species_contribution$avg_contrib=(species_contribution$contribution2pc1+species_contribution$contribution2pc2)/2
+species_contribution=species_contribution[order(species_contribution$avg_contrib,decreasing = T),]
+
+species_coord=scores(otu_cca, display = "sp", scaling = 0)
+species_coord=species_coord[species_contribution$taxa[1:10],] %>% as.data.frame()
+species_coord$contribution=species_contribution$avg_contrib[1:10]
+
+colnames(species_coord)=c("Dim1","Dim2","Contribution")
+
+library(viridis)
+p=ggplot()+
+  geom_point(data=tmp_df,aes(x=PC1*5,y=PC2*5,color=dominate_genus),size=1,alpha=0.3)+
+  scale_color_lancet()+
+  theme(legend.position = "right")+theme_test() + 
+  xlab("RDA1")+ylab("RDA2")+
+  geom_segment(data = species_coord, aes(x = 0, y = 0, xend = Dim1, yend = Dim2),#,color=Contribution
+               size =0.6,arrow = arrow(length = unit(0.01, "npc")) ) +
+  geom_text_repel(data = species_coord, aes(x = Dim1, y = Dim2), color="black",
+                  label = row.names(species_coord),size=3) +
+  theme(text = element_text(size = 10))+
+  geom_hline(yintercept=0,linetype=4)+
+  geom_vline(xintercept=0,linetype=4)#+xlim(-0.55,0.55)+ylim(-0.83,0.91)
+p
+
+
+
+```
+
+## Figure 1C dbRDA
+
+```{r}
+##species
+all2=c()
+for(i in 1:ncol(phe)){
+  cap <- capscale(t(species_clr) ~ phe[,i], distance="euclidean", na.action=na.omit)
+  av <- cap %>%  anova.cca %>%  as.data.frame
+  pval <- av$`Pr(>F)`[1]
+  Fstat <- av$`F`[1]
+  r2 <- RsquareAdj(cap)[[1]]
+  adjr2 <- RsquareAdj(cap)[[2]]
+  all2 <- rbind(all2, cbind(Fstat,r2,adjr2,pval))
+}
+all2 <- as.data.frame(cbind(all2, padj=p.adjust(all2[,"pval"], method="BH")), stringsAsFactors=F)
+all2$var=names(phe)
+all2$group="Species"
+
+##ARG##
+all_arg_horn=c()
+for(i in 1:ncol(phe)){
+  cap <- capscale(arg_matrix_16s_above10 ~ phe[rownames(arg_matrix_16s_above10),i], 
+                  distance="horn", na.action=na.omit)
+  av <- cap %>%  anova.cca %>%  as.data.frame
+  pval <- av$`Pr(>F)`[1]
+  Fstat <- av$`F`[1]
+  r2 <- RsquareAdj(cap)[[1]]
+  adjr2 <- RsquareAdj(cap)[[2]]
+  all_arg_horn <- rbind(all_arg_horn, cbind(Fstat,r2,adjr2,pval))
+}
+all_arg_horn <- as.data.frame(cbind(all_arg_horn, padj=p.adjust(all_arg_horn[,"pval"], method="BH")),
+                              stringsAsFactors=F)
+all_arg_horn$var=names(phe)
+all_arg_horn$group="ARG"
+
+###vf###
+all_vf_horn=c()
+for(i in 1:ncol(phe)){
+  cap <- capscale(vf_matrix_16s_above10 ~ phe[rownames(vf_matrix_16s_above10),i], 
+                  distance="horn", na.action=na.omit)
+  av <- cap %>%  anova.cca %>%  as.data.frame
+  pval <- av$`Pr(>F)`[1]
+  Fstat <- av$`F`[1]
+  r2 <- RsquareAdj(cap)[[1]]
+  adjr2 <- RsquareAdj(cap)[[2]]
+  all_vf_horn <- rbind(all_vf_horn, cbind(Fstat,r2,adjr2,pval))
+}
+all_vf_horn <- as.data.frame(cbind(all_vf_horn, padj=p.adjust(all_vf_horn[,"pval"], method="BH")),
+                              stringsAsFactors=F)
+all_vf_horn$var=names(phe)
+all_vf_horn$group="VF"
+
+###pwy###
+all_pwy_horn=c()
+for(i in 1:ncol(phe)){
+  cap <- capscale(pathway ~ phe[rownames(pathway),i], 
+                  distance="horn", na.action=na.omit)
+  av <- cap %>%  anova.cca %>%  as.data.frame
+  pval <- av$`Pr(>F)`[1]
+  Fstat <- av$`F`[1]
+  r2 <- RsquareAdj(cap)[[1]]
+  adjr2 <- RsquareAdj(cap)[[2]]
+  all_pwy_horn <- rbind(all_pwy_horn, cbind(Fstat,r2,adjr2,pval))
+}
+all_pwy_horn <- as.data.frame(cbind(all_pwy_horn, padj=p.adjust(all_pwy_horn[,"pval"], method="BH")),
+                             stringsAsFactors=F)
+all_pwy_horn$var=names(phe)
+all_pwy_horn$group="Pathway"
+
+##uni permonaova res
+dbrda_uni_res=Reduce(rbind,list(all2,all_pwy_horn,all_arg_horn,all_vf_horn))
+dbrda_uni_res$p.dig2=round(dbrda_uni_res$pval,digits = 2)
+dbrda_uni_res=dbrda_uni_res[dbrda_uni_res$p.dig2<=0.05,]
+#dbrda_uni_res=dbrda_uni_res[dbrda_uni_res$padj<0.05,]
+unique(dbrda_uni_res$var)
+dbrda_uni_res$var=factor(dbrda_uni_res$var,
+                         levels = c("district","job_2","age","gender","hyper_tension","smoke","PM1","pm2.5","pm10","NO2"),
+                          labels = c("District","Occupation","Age","Gender","Hypertension",#"Diabetes",
+                                     "Smoke","PM1","PM2.5","PM10","NO2"))
+dbrda_uni_res$group=factor(dbrda_uni_res$group,levels = c("Species","Pathway","ARG","VF"))
+
+ggplot(dbrda_uni_res, aes(group, adjr2*100, fill = var)) +
+  geom_col(position = position_dodge(width = 0.9),alpha=0.9) +
+  geom_text(aes(label = round(adjr2*100,digits = 2)), size = 3, vjust = -0.5,
+             position = position_dodge(width = 0.9)#,label.size=NA,label.padding = unit(0.0003,'mm')
+            )+
+  scale_fill_jco()+
+  theme_test()+xlab("")+ylab("Explained variance (adjusted R2, %)")
+```
+
+## Figure 1D
+
+```{r}
+data=species_clr[,!(colnames(species_clr) %in% meta_1$sample_id[meta_1$district %in% c("Jiangxia","Qingshang")])]
+library(vegan)
+distance=vegdist(t(data),method = "euclidean")
+pcoa <- cmdscale(distance, k = 2, eig = TRUE)
+pcoa_eig <- (pcoa$eig)[1:2] / sum(pcoa$eig)
+tmp_df <- pcoa$points[,1:2] %>% as.data.frame()
+colnames(tmp_df) <-  c('PCoA1', 'PCoA2')
+all(rownames(tmp_df)==names(data))
+
+tmp_df$samples=rownames(tmp_df)
+rownames(meta_1)=meta_1$sampleID
+tmp_df$group=meta_1[tmp_df$samples,"district"]
+tmp_df2=merge(tmp_df,aggregate(cbind(mean.x=PCoA1,mean.y=PCoA2)~group,tmp_df,mean),by="group")
+tmp_df3=merge(tmp_df,aggregate(cbind(sd.x=PCoA1,sd.y=PCoA2)~group,tmp_df,plotrix::std.error),by="group")
+tmp_df2$sd.x=tmp_df3$sd.x
+tmp_df2$sd.y=tmp_df3$sd.y
+tmp_df2=tmp_df2[!duplicated(tmp_df2$group),]
+tmp_df2=tmp_df2[!tmp_df2$group %in% c("Jiangxia","Qingshang","Jiangan"),]
+
+p=ggplot(tmp_df2, aes(mean.x,mean.y,color=group))+
+  geom_point(size=2,alpha=1)+
+  geom_errorbar(aes(ymin= mean.y-sd.y, ymax=mean.y+sd.y,color=group), width=0.01,size=0.8)+
+  geom_errorbarh(aes(xmin=mean.x-sd.x,xmax=mean.x+sd.x,color=group), width=0.01,size=0.8)+
+  scale_color_manual(values = c(color10[c(1:11)]))+
+  theme_bw()+ 
+  xlab(paste("PCoA1"," (",round(pcoa_eig[1]*100,1),"%",")",sep = ""))+theme(legend.position = "right")+
+  ylab(paste("PCoA2"," (",round(pcoa_eig[2]*100,1),"%",")",sep = ""))
+p
+
+```
+
+## Figure 1E
+
+```{r}
+####district related taxa
+data=species_rela
+sub_meta=phe[phe$district %in% district & rownames(phe) %in% colnames(data),]
+sub_data=t(data)[rownames(sub_meta),]
+
+district_related_species=c()
+for(i in district){
+  tmp_df=data.frame(taxa=colnames(sub_data),FC=NA,p=NA,g1=NA,g2=NA)
+  tmp_df$district=i
+  for(j in tmp_df$taxa){
+    s1=sub_data[rownames(sub_meta)[sub_meta$district==i],j] %>% as.numeric()
+    s2=sub_data[rownames(sub_meta)[sub_meta$district!=i],j] %>% as.numeric()
+    test=wilcox.test(s1,s2)
+    tmp_df$p[tmp_df$taxa==j]=test$p.value
+    tmp_df$FC[tmp_df$taxa==j]=log2(mean(s1)/mean(s2))
+    tmp_df$g1[tmp_df$taxa==j]=mean(s1)
+    tmp_df$g2[tmp_df$taxa==j]=mean(s2)
+  }
+  tmp_df$p.adj=p.adjust(tmp_df$p,method = "fdr")
+  district_related_species=rbind(district_related_species,tmp_df)
+}
+district_related_species=district_related_species[district_related_species$g1 > 0.001 & district_related_species$g2 > 0.001,]# 
+district_related_species=district_related_species[is.na(district_related_species$taxa)==F,]
+View(district_related_species)
+table(district_related_species$district)
+
+district_related_species$district[abs(district_related_species$FC)<=1 | district_related_species$p.adj>=0.05]="non-sig"
+table(district_related_species$district)
+district_related_species$district=factor(district_related_species$district,
+                                         levels = c("Hannan","Hanyang","Hongshang","Wuchang","non-sig"),
+                                         labels = c("Hannan","Hanyang","Hongshan","Wuchang","NS"))
+ggplot(district_related_species,aes(FC,-log10(p.adj)))+
+  geom_point(aes(color=district,size=g1),alpha=0.8)+
+  scale_x_continuous(limits = c(-2, 2))+
+  geom_hline(yintercept=-log10(0.05),linetype=4)+
+  geom_vline(xintercept=c(-1,1),linetype=4)+
+  xlab(expression("log"[2]*" fold change"))+
+  ylab(expression("-log"[10]*" p-value"))+
+  geom_text_repel(data = district_related_species[district_related_species$district!="NS",],
+                  aes(FC, -log10(p), label = taxa,color=district),size = 3,
+                  max.overlaps = getOption("ggrepel.max.overlaps", default = 10),
+                  segment.color = "grey30", segment.size = 0.5,force = 1)+theme_test()+
+  scale_color_manual(values=c("#00A087FF","#3C5488FF","#F39B7FFF","#7E6148FF","grey70"))
+```
+
+## Figure 1F
+
+```{r}
+library(Maaslin2)
+input_data=species_clr %>% t() %>% as.data.frame()
+input_meta=phe[rownames(input_data),]
+all(rownames(input_data)==rownames(input_meta))
+
+Maaslin2(input_data = input_data, 
+         input_metadata = input_meta,
+         output = "species_metadata_association1",
+         normalization = "NONE",
+         transform = "NONE",
+         fixed_effects = c("Smoke","PM10","NO2","Age","Gender","Cardio",
+                           "CLD","Diabetes","Hypertension","Antibody"),
+         correction = "BH",
+         reference = "Smoke,no",#;Occupation,其他;District,Wuchang
+         max_significance = 0.1,
+         min_abundance = 0.001,
+         min_prevalence = 0.2
+         )
+species_meta=read.table("species_metadata_association1/significant_results.tsv",header = T)
+species_meta$abs_coef=abs(species_meta$coef)
+species_meta$sign=ifelse(species_meta$coef>0,1,-1)
+species_meta$z_score_coef=scale(species_meta$coef,center = F,scale = T) %>% as.numeric()
+
+species_meta1=read.csv("species_meta_asso_0821.csv")
+species_meta1=species_meta[species_meta$feature %in% species_meta1$feature,c("feature","metadata","z_score_coef")]
+names(species_meta1)=c("var1","var2","cor")
+species_meta1=rstatix::cor_spread(species_meta1,value = "cor")
+species_meta=dplyr::select(species_meta1,-rowname)
+rownames(species_meta)=species_meta1$rowname
+
+species_meta_p=species_meta %>% as.matrix()
+species_meta_p=ifelse(species_meta_p>0,"+","-")
+species_meta_p[is.na(species_meta_p)==T]=""
+
+bk <- c(seq(-4,-0.001,by=0.01),seq(0,4,by=0.01))
+
+p=pheatmap::pheatmap(species_meta,cluster_rows = F,cluster_cols = F,
+                     border_color = "grey90",
+                     display_numbers = species_meta_p,na_col = "white",fontsize_number = 12,
+                     number_color = "black",
+                     breaks = bk,
+                     color = c(colorRampPalette(colors = c("#023e8a","white"))(length(bk)/2),
+                               colorRampPalette(colors = c("white","#fb8500"))(length(bk)/2)))
+```
