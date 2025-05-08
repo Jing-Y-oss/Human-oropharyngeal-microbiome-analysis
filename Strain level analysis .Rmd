@@ -7,7 +7,7 @@ output: html_document
 
 ## Generating matrix containing multiple sequence alignment results from StrainPhlan
 
-Turn fasta format file into matrix, each element of the matrix is a base, rows are site, columns are samples.
+Turn fasta format file into matrix, each element of the matrix is a base, rows are sites, columns are samples.
 
 ```{r}
 setwd("F:/AAAA/Others/WH_healthy_OP/Summary/WHOP_Manuscript/strain_reanalysis")
